@@ -1,5 +1,6 @@
 # Place at: .github/workflows/visit.yml
-# One visit run: random 0-15 min start delay, then 30-59 min of visits, then it ends.
+# One visit run: short random start delay, then 30-59 min of visits, then it
+# starts the next run right away so the app never sleeps in between.
 name: visit
 
 on:
@@ -7,6 +8,11 @@ on:
 
 permissions:
   contents: read
+  actions: write
+
+concurrency:
+  group: visit-run
+  cancel-in-progress: false
 
 jobs:
   visit:
@@ -28,3 +34,9 @@ jobs:
         env:
           APP_URL: ${{ vars.APP_URL || secrets.APP_URL }}
         run: python visit.py
+
+      - name: Start the next run right away (only if this one succeeded)
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run visit.yml --repo "$GITHUB_REPOSITORY"

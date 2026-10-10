@@ -1,6 +1,6 @@
 # Place at: .github/workflows/tick.yml
-# Tiny scheduler: every 30 min it (1) deletes old runs, (2) starts a visit run
-# only if no visit run is active AND the last one ended at least 60 min ago.
+# Safety net: every 30 min it (1) deletes old runs, (2) starts a visit run
+# only if no visit run is active (visit.yml normally chains itself, this just revives it).
 name: tick
 
 on:
@@ -28,18 +28,11 @@ jobs:
             done
           done
 
-      - name: Start a visit run if idle for at least 1 hour
+      - name: Start a visit run if none is active
         run: |
           active=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow visit.yml --json status \
             --jq '[.[] | select(.status=="in_progress" or .status=="queued" or .status=="waiting" or .status=="pending")] | length')
           if [ "$active" != "0" ]; then echo "visit run is active, skip"; exit 0; fi
-
-          last=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow visit.yml --status completed --limit 1 \
-            --json updatedAt --jq '.[0].updatedAt // empty')
-          if [ -n "$last" ]; then
-            age=$(( $(date +%s) - $(date -d "$last" +%s) ))
-            if [ "$age" -lt 3600 ]; then echo "last run ended $((age/60)) min ago, wait"; exit 0; fi
-          fi
 
           gh workflow run visit.yml --repo "$GITHUB_REPOSITORY"
           echo "visit run started"
