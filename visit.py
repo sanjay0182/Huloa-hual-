@@ -1,16 +1,23 @@
 import os
 import random
+import sys
 import time
 
 from playwright.sync_api import sync_playwright
 
-URL = os.environ["APP_URL"]
-START_DELAY = random.randint(0, 15 * 60)         # random wait before first visit
+# --- check the link FIRST, before any waiting ---
+URL = (os.environ.get("APP_URL") or "").strip()
+if URL and not URL.startswith(("http://", "https://")):
+    URL = "https://" + URL
+if not URL:
+    print("ERROR: APP_URL is empty. Add it in Settings > Secrets and variables > "
+          "Actions (Variables tab, or Secrets tab) with your full app link.", flush=True)
+    sys.exit(1)
 
+START_DELAY = random.randint(0, 15 * 60)          # random wait before first visit
 VISIT_SECONDS = random.randint(30 * 60, 59 * 60)  # visiting window per run (30-59 min)
-GAP_MIN, GAP_MAX = 80, 480         # 1m20s .. 8m between visits
-RETRY_GAP = 60                     # if a visit fails, retry after 1 min
-NEW_BROWSER_EVERY = (12 * 60, 20 * 60)
+GAP_MIN, GAP_MAX = 3 * 60, 18 * 60  # 3 to 18 min between visits (app sleeps after 30 min)
+RETRY_GAP = 60                      # if a visit fails, retry after 1 min
 
 VIEWPORTS = [(1366, 768), (1440, 900), (1536, 864), (1280, 720), (1920, 1080)]
 USER_AGENTS = [
@@ -38,15 +45,17 @@ def act_like_person(page, w, h):
     page.wait_for_timeout(random.randint(3000, 8000))
 
 
-def visit(browser):
+def visit(p):
+    """Open Chrome, visit once, close Chrome. Nothing stays open while waiting."""
     w, h = random.choice(VIEWPORTS)
-    ctx = browser.new_context(
-        viewport={"width": w, "height": h},
-        user_agent=random.choice(USER_AGENTS),
-        locale=random.choice(["en-US", "en-GB", "en-IN"]),
-    )
+    browser = p.chromium.launch()
     ok = False
     try:
+        ctx = browser.new_context(
+            viewport={"width": w, "height": h},
+            user_agent=random.choice(USER_AGENTS),
+            locale=random.choice(["en-US", "en-GB", "en-IN"]),
+        )
         page = ctx.new_page()
         resp = page.goto(URL, wait_until="load", timeout=60000)  # wake-up can take ~10-30s
         status = resp.status if resp else None
@@ -56,27 +65,24 @@ def visit(browser):
     except Exception as e:
         log(f"visit failed: {e}")
     finally:
-        ctx.close()
+        browser.close()
     return ok
 
 
 def main():
+    log(f"url={URL}")
     log(f"start delay {START_DELAY // 60} min, visiting for {VISIT_SECONDS // 60} min")
     time.sleep(START_DELAY)
 
     start = time.time()
     with sync_playwright() as p:
         while time.time() - start < VISIT_SECONDS:
-            browser = p.chromium.launch()
-            browser_until = time.time() + random.randint(*NEW_BROWSER_EVERY)
-            while time.time() < browser_until and time.time() - start < VISIT_SECONDS:
-                ok = visit(browser)
-                gap = random.randint(GAP_MIN, GAP_MAX) if ok else RETRY_GAP
-                remaining = VISIT_SECONDS - (time.time() - start)
-                if remaining <= 0:
-                    break
-                time.sleep(min(gap, remaining))
-            browser.close()
+            ok = visit(p)
+            gap = random.randint(GAP_MIN, GAP_MAX) if ok else RETRY_GAP
+            remaining = VISIT_SECONDS - (time.time() - start)
+            if remaining <= 0:
+                break
+            time.sleep(min(gap, remaining))  # browser is closed during this wait
     log("visiting window finished")
 
 
