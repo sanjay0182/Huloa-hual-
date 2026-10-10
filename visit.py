@@ -5,9 +5,9 @@ import time
 from playwright.sync_api import sync_playwright
 
 URL = os.environ["APP_URL"]
-WAIT_SECONDS = int(os.environ.get("WAIT_MINUTES", "0") or 0) * 60
+START_DELAY = random.randint(0, 15 * 60)         # random wait before first visit
 
-VISIT_SECONDS = 45 * 60            # visiting window per run
+VISIT_SECONDS = random.randint(30 * 60, 59 * 60)  # visiting window per run (30-59 min)
 GAP_MIN, GAP_MAX = 80, 480         # 1m20s .. 8m between visits
 RETRY_GAP = 60                     # if a visit fails, retry after 1 min
 NEW_BROWSER_EVERY = (12 * 60, 20 * 60)
@@ -61,9 +61,8 @@ def visit(browser):
 
 
 def main():
-    if WAIT_SECONDS:
-        log(f"waiting {WAIT_SECONDS // 60} min before visiting")
-        time.sleep(WAIT_SECONDS)
+    log(f"start delay {START_DELAY // 60} min, visiting for {VISIT_SECONDS // 60} min")
+    time.sleep(START_DELAY)
 
     start = time.time()
     with sync_playwright() as p:
